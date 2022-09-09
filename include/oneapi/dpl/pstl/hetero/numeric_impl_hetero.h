@@ -161,8 +161,10 @@ __pattern_transform_scan(_ExecutionPolicy&& __exec, _Iterator1 __first, _Iterato
                          _UnaryOperation __unary_op, _Type __init, _BinaryOperation __binary_op, _Inclusive,
                          /*vector=*/::std::true_type, /*parallel=*/::std::true_type)
 {
+    using _BaseType = typename ::std::iterator_traits<_Iterator1>::value_type;
+    using _RepackedBaseType = __par_backend_hetero::__repacked_tuple_t<_BaseType>;
     using _RepackedType = __par_backend_hetero::__repacked_tuple_t<_Type>;
-    using _InitType = unseq_backend::__init_value<_RepackedType>;
+    using _InitType = unseq_backend::__init_value<_RepackedType, _RepackedBaseType>;
 
     return __pattern_transform_scan_base(::std::forward<_ExecutionPolicy>(__exec), __first, __last, __result,
                                          __unary_op, _InitType{__init}, __binary_op, _Inclusive{});

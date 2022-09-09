@@ -155,26 +155,28 @@ struct walk_adjacent_difference
 };
 
 // the C++ stuff types to distinct "init vs. no init"
-template <typename _InitType>
+template <typename _InitType, typename _BaseType=_InitType>
 struct __init_value
 {
     _InitType __value;
-    using __value_type = _InitType;
+    using __value_type = _BaseType;
+    using __init_type = _InitType;
 };
 
 template <typename _InitType = void>
 struct __no_init_value
 {
     using __value_type = _InitType;
+    using __init_type = _InitType;
 };
 
 // structure for the correct processing of the initial scan element
-template <typename _InitType>
+template <typename _InitType, typename _BaseType>
 struct __init_processing
 {
     template <typename _Tp>
     void
-    operator()(const __init_value<_InitType>& __init, _Tp&& __value) const
+    operator()(const __init_value<_InitType, _BaseType>& __init, _Tp&& __value) const
     {
         __value = __init.__value;
     }
@@ -186,7 +188,7 @@ struct __init_processing
 
     template <typename _Tp, typename _BinaryOp>
     void
-    operator()(const __init_value<_InitType>& __init, _Tp&& __value, _BinaryOp __bin_op) const
+    operator()(const __init_value<_InitType, _BaseType>& __init, _Tp&& __value, _BinaryOp __bin_op) const
     {
         __value = __bin_op(__init.__value, __value);
     }
@@ -291,7 +293,8 @@ struct reduce
     void
     apply_init(const _InitType& __init, _Result&& __result) const
     {
-        __init_processing<_Tp>{}(__init, __result, __bin_op1);
+        using _InitTp = typename _InitType::__init_type;
+        __init_processing<_InitTp, _Tp>{}(__init, __result, __bin_op1);
     }
 };
 
@@ -578,7 +581,8 @@ struct __global_scan_functor
             if (__item_idx == 0)
             {
                 using _Tp = typename _InitType::__value_type;
-                __init_processing<_Tp> __use_init{};
+                using _InitTp = typename _InitType::__init_type;
+                __init_processing<_InitTp, _Tp> __use_init{};
                 __use_init(__init, __out_acc[__item_idx]);
             }
         });
@@ -590,6 +594,7 @@ template <typename _Inclusive, typename _ExecutionPolicy, typename _BinaryOperat
 struct __scan
 {
     using _Tp = typename _InitType::__value_type;
+    using _InitTp = typename _InitType::__init_type;
     _BinaryOperation __bin_op;
     _UnaryOp __unary_op;
     _WgAssigner __wg_assigner;
@@ -606,7 +611,7 @@ struct __scan
         ::std::size_t __group_id = __item.get_group(0);
         ::std::size_t __global_id = __item.get_global_id(0);
         ::std::size_t __local_id = __item.get_local_id(0);
-        __init_processing<_Tp> __use_init{};
+        __init_processing<_InitTp, _Tp> __use_init{};
 
         ::std::size_t __shift = 0;
         __internal::__invoke_if_not(_Inclusive{}, [&]() { __shift = 1; });
@@ -688,7 +693,7 @@ struct __scan
         auto __group_id = __item.get_group(0);
         auto __global_id = __item.get_global_id(0);
         auto __local_id = __item.get_local_id(0);
-        auto __use_init = __init_processing<_Tp>{};
+        auto __use_init = __init_processing<_InitTp, _Tp>{};
 
         auto __shift = 0;
         __internal::__invoke_if_not(_Inclusive{}, [&]() { __shift = 1; });
