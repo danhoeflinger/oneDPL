@@ -219,9 +219,9 @@ struct GetCollapsibleType<T, __void_type<typename T::IsTransformOutputIterRefWra
 //If the incoming reference type is not collapsible, create a transform_output_ref_wrapper as normal
 template <typename T, typename _UnaryFunc>
 auto
-inner_make_transform_output_ref_wrapper(T&& __reference, _UnaryFunc __unary_func, CollapsibleTypes::NotCollapsible)
+inner_make_transform_output_ref_wrapper(T& __reference, _UnaryFunc __unary_func, CollapsibleTypes::NotCollapsible)
 {
-    return transform_output_ref_wrapper(std::forward<T>(__reference), __unary_func);
+    return transform_output_ref_wrapper(__reference, __unary_func);
 }
 
 //If the incoming reference type is collapsible, collapse it by creating a new transform_output_ref_wrapper with its
