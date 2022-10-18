@@ -50,14 +50,14 @@ DEFINE_TEST(test_copy_typeshift)
 {
     DEFINE_TEST_CONSTRUCTOR(test_copy_typeshift)
 
-    template <typename ExecutionPolicy, typename Iterator1, typename Iterator2, typename Size, typename Iterator3>
-    void operator()(ExecutionPolicy&& exec, Iterator1 first1, Iterator1 last1, Iterator2 first2, Size n, Iterator3 expected_values)
-    {
+        template <typename ExecutionPolicy, typename Iterator1, typename Iterator2, typename ResultIterator,
+                  typename Size, typename Iterator3> void
+        operator()(ExecutionPolicy&& exec, Iterator1 first1, Iterator1 last1, Iterator2 first2,
+                   ResultIterator res_first, Size n, Iterator3 expected_values){
 
         ::std::copy(::std::forward<ExecutionPolicy>(exec), first1, last1, first2);
 
-      
-        EXPECT_EQ_N(expected_values, first2, n, "Wrong result from copy with transform_output_iterator");
+        EXPECT_EQ_N(expected_values, res_first, n, "Wrong result from copy with transform_output_iterator");
     }
 }; // struct test_copy_typeshift
 
@@ -183,7 +183,8 @@ test_type_shift(size_t buffer_size)
 
     test_copy_typeshift<int> test(test_base_output_data);
     TestUtils::invoke_on_all_hetero_policies<3>()(test, sycl_source_begin, sycl_source_begin + buffer_size,
-                                                   tr2_host_result_begin, buffer_size, expected_res.begin());
+                                                  tr2_host_result_begin, sycl_result_begin, buffer_size,
+                                                  expected_res.begin());
 }
 
 #endif // TEST_DPCPP_BACKEND_PRESENT

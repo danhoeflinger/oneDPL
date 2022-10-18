@@ -170,10 +170,6 @@ class transform_output_ref_wrapper
     {
     }
 
-    // Conversion operator to wrapped reference type to allow use of this wrapper interchangeably with the reference
-    //  it wraps
-    operator T&() { return __my_reference_; }
-
     // Create a new composite transform_output_ref_wrapper which composes the unary functions of this and
     //  the param, first applying the incoming unary function, then applying the one in this
     //  transform_output_ref_wrapper.  The new transform_output_ref_wrapper uses the same reference data.
