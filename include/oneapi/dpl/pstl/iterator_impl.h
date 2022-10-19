@@ -176,14 +176,6 @@ class transform_output_ref_wrapper
     }
 };
 
-template <typename T, typename _UnaryFunc>
-auto
-make_transform_output_ref_wrapper(T&& __reference, _UnaryFunc __unary_func)
-{
-
-    return transform_output_ref_wrapper<T, _UnaryFunc>(std::forward<T>(__reference), __unary_func);
-}
-
 //Unary functor to create a transform_output_reference_wrapper when a transform_iterator is dereferenced, so that a
 // the supplied unary function may be applied on write, resulting in a transform_output_iterator
 template <typename _UnaryFunc>
@@ -195,7 +187,7 @@ struct _Unary_Out
     auto
     operator()(T&& val) const
     {
-        return make_transform_output_ref_wrapper(std::forward<T>(val), __f);
+        return transform_output_ref_wrapper<T, _UnaryFunc>(std::forward<T>(val), __f);
     }
 };
 
