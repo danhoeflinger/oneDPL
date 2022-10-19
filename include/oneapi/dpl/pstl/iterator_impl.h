@@ -139,10 +139,6 @@ class zip_forward_iterator
     __it_types __my_it_;
 };
 
-template <typename T, typename _UnaryFunc>
-auto
-make_transform_output_ref_wrapper(T&& __reference, _UnaryFunc __unary_func);
-
 // Wrapper class returned from a dereferenced transform_iterator which was created using
 //  make_transform_output_iterator(). Used to apply the supplied transform function when writing
 //  into an object of this class.
@@ -160,25 +156,14 @@ template <typename T, typename _UnaryFunc>
 class transform_output_ref_wrapper
 {
   private:
-    T& __my_reference_;
+    T __my_reference_;
     _UnaryFunc __my_unary_func_;
 
   public:
-    typedef ::std::true_type IsTransformOutputIterRefWrapper;
-    transform_output_ref_wrapper(T& __reference, _UnaryFunc __unary_func)
-        : __my_reference_(__reference), __my_unary_func_(__unary_func)
+    template <typename U>
+    transform_output_ref_wrapper(U&& __reference, _UnaryFunc __unary_func)
+        : __my_reference_(std::forward<U>(__reference)), __my_unary_func_(__unary_func)
     {
-    }
-
-    // Create a new composite transform_output_ref_wrapper which composes the unary functions of this and
-    //  the param, first applying the incoming unary function, then applying the one in this
-    //  transform_output_ref_wrapper.  The new transform_output_ref_wrapper uses the same reference data.
-    template <typename _UnaryFuncOuter>
-    auto
-    make_composite_wrapper(_UnaryFuncOuter __unary_func_outer)
-    {
-        return make_transform_output_ref_wrapper(
-            __my_reference_, [=](const auto& x) { return __my_unary_func_(__unary_func_outer(x)); });
     }
 
     // When writing to an object of this type, apply the supplied unary function, then write to the wrapped reference
@@ -191,54 +176,12 @@ class transform_output_ref_wrapper
     }
 };
 
-namespace CollapsibleTypes
-{
-struct Collapsible
-{
-};
-struct NotCollapsible
-{
-};
-} // namespace CollapsibleTypes
-
-//Baseline case for all non specialized types, they are not collapsible
-template <typename T, typename = void>
-struct GetCollapsibleType
-{
-    typedef CollapsibleTypes::NotCollapsible Type;
-};
-
-//If the type is already a transform_output_reference_wrapper, we can collapse it when using that to create another
-// transform_output_reference_wrapper, so we consider it collapsible
-template <typename T>
-struct GetCollapsibleType<T, __void_type<typename T::IsTransformOutputIterRefWrapper>>
-{
-    typedef CollapsibleTypes::Collapsible Type;
-};
-
-//If the incoming reference type is not collapsible, create a transform_output_ref_wrapper as normal
-template <typename T, typename _UnaryFunc>
-auto
-inner_make_transform_output_ref_wrapper(T& __reference, _UnaryFunc __unary_func, CollapsibleTypes::NotCollapsible)
-{
-    return transform_output_ref_wrapper(__reference, __unary_func);
-}
-
-//If the incoming reference type is collapsible, collapse it by creating a new transform_output_ref_wrapper with its
-// reference and by composing the inner and outer unary functions together to form a single unary function
-template <typename T, typename _UnaryFunc>
-auto
-inner_make_transform_output_ref_wrapper(T __reference, _UnaryFunc __unary_func, CollapsibleTypes::Collapsible)
-{
-    return __reference.make_composite_wrapper(__unary_func);
-}
-
 template <typename T, typename _UnaryFunc>
 auto
 make_transform_output_ref_wrapper(T&& __reference, _UnaryFunc __unary_func)
 {
-    typedef typename GetCollapsibleType<T>::Type CollapsibleType;
-    return inner_make_transform_output_ref_wrapper(std::forward<T>(__reference), __unary_func, CollapsibleType());
+
+    return transform_output_ref_wrapper<T, _UnaryFunc>(std::forward<T>(__reference), __unary_func);
 }
 
 //Unary functor to create a transform_output_reference_wrapper when a transform_iterator is dereferenced, so that a
