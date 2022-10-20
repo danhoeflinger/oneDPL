@@ -61,6 +61,94 @@ DEFINE_TEST(test_copy_typeshift)
     }
 }; // struct test_copy_typeshift
 
+template <typename OutputIterator1, typename UnaryFunc>
+auto
+attempt_to_dangle(OutputIterator1 out1, UnaryFunc unary)
+{
+    auto toi = oneapi::dpl::make_transform_output_iterator(out1, unary);
+    //leave scope of the transform output iterator, then assign data to the wrapper after the fact.
+    return *toi;
+}
+
+DEFINE_TEST(test_attempted_dangling_ref){
+    DEFINE_TEST_CONSTRUCTOR(test_attempted_dangling_ref)
+
+        template <typename ExecutionPolicy, typename OutputIterator1, typename InputIterator, typename Size,
+                  typename Iterator3, typename UnaryFunc> void
+        operator()(ExecutionPolicy&& exec, OutputIterator1 first1, OutputIterator1 last1, InputIterator input, Size n,
+                   Iterator3 expected_values, UnaryFunc unary){
+            auto num_eles = last1 - first1;
+            oneapi::dpl::counting_iterator<::std::size_t> count_first(0UL);
+            oneapi::dpl::counting_iterator<::std::size_t> count_last(num_eles);
+            std::for_each(::std::forward<ExecutionPolicy>(exec), count_first, count_last, [=](const auto& elem) {
+                auto wrapper = attempt_to_dangle(first1 + elem, unary);
+                //assigning to wrapper object after transform_iterator leaves scope with zip iter
+                wrapper = input[elem];
+                });
+            EXPECT_EQ_N(expected_values, first1, n, "Wrong result from copy with transform_output_iterator ");
+    }
+}; // struct test_attempted_dangling_ref
+
+template <typename OutputIterator1, typename UnaryFunc1, typename UnaryFunc2>
+auto
+attempt_to_dangle_chain(OutputIterator1 out1, UnaryFunc1 unary1, UnaryFunc2 unary2)
+{
+    auto toi1 = oneapi::dpl::make_transform_output_iterator(out1, unary1);
+    auto toi2 = oneapi::dpl::make_transform_output_iterator(toi1, unary2);
+    //leave scope of the transform output iterator, then assign data to the wrapper after the fact.
+    return *toi2;
+}
+
+DEFINE_TEST(test_attempted_dangling_chain_ref){
+    DEFINE_TEST_CONSTRUCTOR(test_attempted_dangling_chain_ref)
+
+        template <typename ExecutionPolicy, typename OutputIterator1, typename InputIterator, typename Size,
+                  typename Iterator3, typename UnaryFunc1, typename UnaryFunc2> void
+        operator()(ExecutionPolicy&& exec, OutputIterator1 first1, OutputIterator1 last1, InputIterator input, Size n,
+                   Iterator3 expected_values, UnaryFunc1 unary1, UnaryFunc2 unary2){
+            auto num_eles = last1 - first1;
+            oneapi::dpl::counting_iterator<::std::size_t> count_first(0UL);
+            oneapi::dpl::counting_iterator<::std::size_t> count_last(num_eles);
+            std::for_each(::std::forward<ExecutionPolicy>(exec), count_first, count_last, [=](const auto& elem) {
+                auto wrapper = attempt_to_dangle_chain(first1 + elem, unary1, unary2);
+                //assigning to wrapper object after transform_iterators leaves scope
+                wrapper = input[elem];
+                });
+            EXPECT_EQ_N(expected_values, first1, n, "Wrong result from copy with transform_output_iterator ");
+    }
+}
+; // struct test_attempted_dangling_chain_ref
+
+template <typename OutputIterator1, typename OutputIterator2, typename UnaryFunc>
+auto
+attempt_to_dangle_zip(OutputIterator1 out1, OutputIterator2 out2, UnaryFunc unary)
+{
+    auto zip = oneapi::dpl::make_zip_iterator(out1, out2);
+    auto toi = oneapi::dpl::make_transform_output_iterator(zip, unary);
+    //leave scope of the transform output iterator, then assign data to the wrapper after the fact.
+    return *toi;
+}
+
+DEFINE_TEST(test_attempted_dangling_zip_ref){
+    DEFINE_TEST_CONSTRUCTOR(test_attempted_dangling_zip_ref)
+
+        template <typename ExecutionPolicy, typename OutputIterator1, typename OutputIterator2, typename InputIterator,
+                  typename Size, typename Iterator3, typename UnaryFunc> void
+        operator()(ExecutionPolicy&& exec, OutputIterator1 first1, OutputIterator1 last1, OutputIterator2 first2,
+                   InputIterator input, Size n, Iterator3 expected_values,
+                   UnaryFunc unary){
+            auto num_eles = last1 - first1;
+            oneapi::dpl::counting_iterator<::std::size_t> count_first(0UL);
+            oneapi::dpl::counting_iterator<::std::size_t> count_last(num_eles);
+            std::for_each(::std::forward<ExecutionPolicy>(exec), count_first, count_last, [=](const auto& elem) {
+                auto wrapper = attempt_to_dangle_zip(first1 + elem, first2 + elem, unary);
+                //assigning to wrapper object after transform_iterator leaves scope
+                wrapper = input[elem];
+               });
+            auto zip_output = oneapi::dpl::make_zip_iterator(first1, first2);
+            EXPECT_EQ_N(expected_values, zip_output, n, "Wrong result from copy with transform_output_iterator ");
+    }
+}; // struct test_attempted_dangling_zip_ref
 
 void test_simple_copy(size_t buffer_size)
 {
@@ -187,6 +275,140 @@ test_type_shift(size_t buffer_size)
                                                   expected_res.begin());
 }
 
+void
+test_zip_iterator(size_t buffer_size)
+{
+
+    // 1. create buffers
+    sycl::queue q{};
+
+    using TestBaseOutputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    using TestBaseOutputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseOutputData test_base_output_data1(q, {{buffer_size, 0}});
+    TestBaseOutputData test_base_output_data2(q, {{buffer_size, 0}});
+    using TestBaseInputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseInputData test_base_input_data(q, {{buffer_size, 0}});
+
+    // 2. create iterators over source buffer
+    auto sycl_source_begin = test_base_input_data.get_start_from(UDTKind::eKeys);
+    auto sycl_result_begin1 = test_base_output_data1.get_start_from(UDTKind::eKeys);
+    auto sycl_result_begin2 = test_base_output_data2.get_start_from(UDTKind::eKeys);
+
+    auto zip = oneapi::dpl::make_zip_iterator(sycl_result_begin1, sycl_result_begin2);
+
+    // 3. run algorithms
+    auto transformation1 = [](const auto& item) { return ::std::make_tuple(item - 1.0f, item * item); };
+    auto tr1_host_result_begin = oneapi::dpl::make_transform_output_iterator(zip, transformation1);
+
+    //typedef decltype(*tr1_host_result_begin)::X __X;
+    float init = 2.0f;
+
+    ::std::fill_n(sycl_source_begin, buffer_size, init);
+
+    ::std::vector<float> expected_res1(buffer_size, init - 1.0f);
+    ::std::vector<float> expected_res2(buffer_size, init * init);
+    auto zip_res = oneapi::dpl::make_zip_iterator(expected_res1.begin(), expected_res2.begin());
+
+    test_copy_typeshift<float> test(test_base_output_data1);
+    TestUtils::invoke_on_all_hetero_policies<4>()(test, sycl_source_begin, sycl_source_begin + buffer_size,
+                                                  tr1_host_result_begin, zip, buffer_size, zip_res);
+}
+
+void
+test_dangling_ref(size_t buffer_size)
+{
+
+    // 1. create buffers
+    sycl::queue q{};
+
+    using TestBaseOutputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseOutputData test_base_output_data(q, {{buffer_size, 0}});
+    using TestBaseInputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseInputData test_base_input_data(q, {{buffer_size, 0}});
+
+    // 2. create iterators over source buffer
+    auto sycl_source_begin = test_base_input_data.get_start_from(UDTKind::eKeys);
+    auto sycl_result_begin = test_base_output_data.get_start_from(UDTKind::eKeys);
+
+    float init = 2.0f;
+
+    ::std::fill_n(sycl_source_begin, buffer_size, init);
+
+    ::std::vector<float> expected_res(buffer_size, init * init);
+
+    test_attempted_dangling_ref<float> test(test_base_output_data);
+    auto transformation1 = [](const auto& item) { return item * item; };
+
+    TestUtils::invoke_on_all_hetero_policies<4>()(test, sycl_result_begin, sycl_result_begin + buffer_size,
+                                                  sycl_source_begin, buffer_size, expected_res.begin(),
+                                                  transformation1);
+}
+
+void
+test_dangling_chain_ref(size_t buffer_size)
+{
+
+    // 1. create buffers
+    sycl::queue q{};
+
+    using TestBaseOutputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseOutputData test_base_output_data(q, {{buffer_size, 0}});
+    using TestBaseInputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseInputData test_base_input_data(q, {{buffer_size, 0}});
+
+    // 2. create iterators over source buffer
+    auto sycl_source_begin = test_base_input_data.get_start_from(UDTKind::eKeys);
+    auto sycl_result_begin = test_base_output_data.get_start_from(UDTKind::eKeys);
+
+    float init = 2.0f;
+
+    ::std::fill_n(sycl_source_begin, buffer_size, init);
+
+    ::std::vector<float> expected_res(buffer_size, (init * init) - 2.0f);
+
+    test_attempted_dangling_chain_ref<float> test(test_base_output_data);
+    auto transformation1 = [](const auto& item) { return item - 2.0f; };
+    auto transformation2 = [](const auto& item) { return item * item; };
+
+    TestUtils::invoke_on_all_hetero_policies<4>()(test, sycl_result_begin, sycl_result_begin + buffer_size,
+                                                  sycl_source_begin, buffer_size, expected_res.begin(), transformation1,
+                                                  transformation2);
+}
+
+void
+test_dangling_zip_ref(size_t buffer_size)
+{
+
+    // 1. create buffers
+    sycl::queue q{};
+
+    using TestBaseOutputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseOutputData test_base_output_data1(q, {{buffer_size, 0}});
+    TestBaseOutputData test_base_output_data2(q, {{buffer_size, 0}});
+    using TestBaseInputData = test_base_data_usm<sycl::usm::alloc::shared, float>;
+    TestBaseInputData test_base_input_data(q, {{buffer_size, 0}});
+
+    // 2. create iterators over source buffer
+    auto sycl_source_begin = test_base_input_data.get_start_from(UDTKind::eKeys);
+    auto sycl_result_begin1 = test_base_output_data1.get_start_from(UDTKind::eKeys);
+    auto sycl_result_begin2 = test_base_output_data2.get_start_from(UDTKind::eKeys);
+
+    float init = 2.0f;
+
+    ::std::fill_n(sycl_source_begin, buffer_size, init);
+
+    ::std::vector<float> expected_res1(buffer_size, init - 1.0f);
+    ::std::vector<float> expected_res2(buffer_size, init * init);
+    auto zip_res = oneapi::dpl::make_zip_iterator(expected_res1.begin(), expected_res2.begin());
+
+    test_attempted_dangling_zip_ref<float> test(test_base_output_data1);
+    auto transformation1 = [](const auto& item) { return ::std::make_tuple(item - 1.0f, item * item); };
+
+    TestUtils::invoke_on_all_hetero_policies<4>()(test, sycl_result_begin1, sycl_result_begin1 + buffer_size,
+                                                  sycl_result_begin2, sycl_source_begin, buffer_size, zip_res,
+                                                  transformation1);
+}
+
 #endif // TEST_DPCPP_BACKEND_PRESENT
 
 std::int32_t
@@ -200,6 +422,10 @@ main()
         test_multi_transform_copy(n);
         test_fill_transform(n);
         test_type_shift(n);
+        test_zip_iterator(n);
+        test_dangling_ref(n);
+        test_dangling_chain_ref(n);
+        test_dangling_zip_ref(n);
     }
 #endif
 
