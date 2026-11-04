@@ -42,8 +42,9 @@ function render(state) {
                `⏳ **Public CI is running** on ${state.sha.slice(0, 7)} (${where}). ` +
                'The checkbox returns when the run finishes or a new commit is pushed.';
     } else {
-        line = '- [ ] **Run public CI** on the latest commit of this PR ' +
-               '(requires write access; results appear in the checks below)';
+        line = '- [ ] **Run public CI** on the latest commit of this PR (results appear in the checks below)\n\n' +
+               '  ⚠️ **Requires write access to this repository.** ' +
+               'For anyone else, checking the box has no effect: it is unchecked again and no CI runs.';
     }
     return [START, '', '---', line, END].join('\n');
 }
