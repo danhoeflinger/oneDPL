@@ -1,1 +1,2 @@
 throwaway test file for the on-demand CI button; do not merge
+second commit to test lock reset and run supersession
