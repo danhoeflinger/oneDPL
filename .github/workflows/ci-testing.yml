@@ -48,23 +48,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
+      pull-requests: write  # update the on-demand control in the PR description
       statuses: write
     steps:
+      # Helper script from the dispatch ref (a branch of this repository), not from the tested commit.
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts/ci-on-demand.js
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - uses: actions/github-script@v9
         env:
           SHA: ${{ inputs.sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
+            const ci = require('./.github/scripts/ci-on-demand.js');
             const sha = process.env.SHA;
-            if (!/^[0-9a-f]{40}$/.test(sha)) {
-              core.setFailed(`A full commit SHA is required with pr_number, got '${sha}'.`);
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!/^[0-9a-f]{40}$/.test(sha) || !Number.isInteger(prNumber)) {
+              core.setFailed(`A PR number and a full commit SHA are required, got '${process.env.PR_NUMBER}', '${sha}'.`);
               return;
             }
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
-              ...context.repo, sha, state: 'pending', context: 'oneDPL CI Testing (on demand)',
-              description: 'Running',
-              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              ...context.repo, sha, state: 'pending', context: ci.STATUS_CONTEXT, description: 'Running', target_url: runUrl,
             });
+            // Link the run from the locked control.
+            await ci.updateBlock(github, context, prNumber, (state) =>
+              state.kind === 'running' && state.sha === sha ? { kind: 'running', sha, runUrl } : null);
 
   clang-format:
     if: github.event_name == 'workflow_dispatch' && inputs.base_sha != ''
@@ -400,24 +413,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
+      pull-requests: write  # update the on-demand control in the PR description
       statuses: write
     steps:
+      # Helper script from the dispatch ref (a branch of this repository), not from the tested commit.
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts/ci-on-demand.js
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - uses: actions/github-script@v9
         env:
           SHA: ${{ inputs.sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
           NEEDS: ${{ toJSON(needs) }}
         with:
           script: |
+            const ci = require('./.github/scripts/ci-on-demand.js');
             const sha = process.env.SHA;
-            if (!/^[0-9a-f]{40}$/.test(sha))
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!/^[0-9a-f]{40}$/.test(sha) || !Number.isInteger(prNumber))
               return;
-            const STATUS_CONTEXT = 'oneDPL CI Testing (on demand)';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
-            // Do not overwrite the status if a newer run (or request) for this commit has taken it over,
-            // e.g. when this run was cancelled because the button was clicked again.
+            // Unlock the control if it is still locked for this commit (a newer commit may have taken it over).
+            await ci.updateBlock(github, context, prNumber, (state) =>
+              state.kind === 'running' && state.sha === sha ? { kind: 'idle' } : null);
+
+            // Do not overwrite the status if a newer run (or request) for this commit has taken it over.
             const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({ ...context.repo, ref: sha, per_page: 100 });
-            const latest = statuses.find(st => st.context === STATUS_CONTEXT);
+            const latest = statuses.find(st => st.context === ci.STATUS_CONTEXT);
             if (latest && latest.target_url !== runUrl) {
               core.notice(`Status is owned by ${latest.target_url}; not overwriting.`);
               return;
@@ -435,5 +461,5 @@ jobs:
               state = 'error'; description = 'Run was cancelled or jobs were skipped';
             }
             await github.rest.repos.createCommitStatus({
-              ...context.repo, sha, state, context: STATUS_CONTEXT, description, target_url: runUrl,
+              ...context.repo, sha, state, context: ci.STATUS_CONTEXT, description, target_url: runUrl,
             });
